@@ -6,6 +6,7 @@ import org.ethereum.core.BlockHeaderWrapper;
 import org.ethereum.core.Blockchain;
 import org.ethereum.db.ByteArrayWrapper;
 import org.ethereum.util.ByteArrayMap;
+import org.ethereum.util.FastByteComparisons;
 import org.ethereum.util.Functional;
 import org.spongycastle.util.encoders.Hex;
 
@@ -15,7 +16,7 @@ import java.util.*;
  * Created by Anton Nashatyrev on 27.05.2016.
  */
 public class SyncQueueImpl implements SyncQueueIfc {
-    static int MAX_CHAIN_LEN = 192;
+    static int MAX_CHAIN_LEN = 1024;
 
     static class HeadersRequestImpl implements HeadersRequest {
         public HeadersRequestImpl(long start, int count, boolean reverse) {
@@ -240,16 +241,52 @@ public class SyncQueueImpl implements SyncQueueIfc {
         return longestChain.get(longestChain.size() - 1).header.getNumber() < maxNum;
     }
 
+    private HeaderElement notConnectedSideChain(List<HeaderElement> mainChain) {
+        for (HeaderElement element : mainChain) {
+            Map<ByteArrayWrapper, HeaderElement> curLevel = headers.get(element.header.getNumber());
+            if (headers.get(element.header.getNumber() - 1) != null) {
+                if (curLevel.size() != 1) {
+                    Collection<HeaderElement> levelElements = curLevel.values();
+                    for (HeaderElement curElement : levelElements) {
+                        if (FastByteComparisons.equal(curElement.header.getHash(), element.header.getHash())) continue;
+                        if (curElement.getParent() == null) {
+                            return curElement;
+                        }
+                    }
+                }
+            }
+        }
+
+        return null;
+    }
+
     private void trimChain() {
         List<HeaderElement> longestChain = getLongestChain();
+        if (notConnectedSideChain(longestChain) != null) return;
         if (longestChain.size() > MAX_CHAIN_LEN) {
-            long newTrimNum = getLongestChain().get(longestChain.size() - MAX_CHAIN_LEN).header.getNumber();
+            long suggestedTrimNum = longestChain.get(longestChain.size() - MAX_CHAIN_LEN).header.getNumber();
+            long newTrimNum = adjustTrimForPossibleBranching(suggestedTrimNum);
+            System.out.println("Trimming to :" + newTrimNum);
             for (int i = 0; darkZoneNum < newTrimNum; darkZoneNum++, i++) {
                 ByteArrayWrapper wHash = new ByteArrayWrapper(longestChain.get(i).header.getHash());
                 putGenHeaders(darkZoneNum, Collections.singletonMap(wHash, longestChain.get(i)));
             }
             darkZoneNum--;
         }
+    }
+
+    private Long adjustTrimForPossibleBranching(Long trimNum) {
+        int count = 0;
+        for (long i = minNum; i <= Math.min(trimNum + 192, maxNum); i++) {
+            if (headers.get(i) == null || headers.get(i).size() == 1) {
+                count = 0;
+            } else {
+                count++;
+            }
+            if (count >= 192) return i - count;
+        }
+
+        return trimNum;
     }
 
     private void trimExported() {
@@ -301,6 +338,13 @@ public class SyncQueueImpl implements SyncQueueIfc {
         int headersCount;
         boolean reverse = false;
 
+        List<HeaderElement> longestChain = getLongestChain();
+        HeaderElement lostSideChainStart = notConnectedSideChain(longestChain);
+        if (lostSideChainStart != null && rnd.nextBoolean()) {
+            System.out.println("Side chain restoration from: #" + lostSideChainStart.header.getNumber() + " (" + lostSideChainStart.header.getHexStrShort() + ")");
+            return new HeadersRequestImpl(lostSideChainStart.header.getHash(), MAX_CHAIN_LEN, true);
+        }
+
         if (!hasGaps()) {
             startNumber = maxNum + 1;
             if (endBlockNumber != null) {
@@ -309,7 +353,6 @@ public class SyncQueueImpl implements SyncQueueIfc {
                 headersCount = count;
             }
         } else {
-            List<HeaderElement> longestChain = getLongestChain();
             startNumber = longestChain.get(longestChain.size() - 1).header.getNumber();
             headersCount = MAX_CHAIN_LEN;
             if (!rnd.nextBoolean()) reverse = true;
