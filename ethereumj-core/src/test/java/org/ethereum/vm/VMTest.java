@@ -17,6 +17,10 @@
  */
 package org.ethereum.vm;
 
+import com.typesafe.config.Config;
+import com.typesafe.config.ConfigFactory;
+import com.typesafe.config.ConfigValueFactory;
+import org.ethereum.config.SystemProperties;
 import org.ethereum.core.Repository;
 import org.ethereum.vm.program.Program;
 import org.ethereum.vm.program.Program.BadJumpDestinationException;

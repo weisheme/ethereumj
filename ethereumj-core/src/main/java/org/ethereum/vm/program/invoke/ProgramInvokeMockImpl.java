@@ -42,6 +42,7 @@ public class ProgramInvokeMockImpl implements ProgramInvoke {
 
     // default for most tests. This can be overwritten by the test
     private long gasLimit = 1000000;
+    private long number = 33;
 
     public ProgramInvokeMockImpl(byte[] msgDataRaw) {
         this();
@@ -193,7 +194,6 @@ public class ProgramInvokeMockImpl implements ProgramInvoke {
 
     @Override
     public DataWord getNumber() {
-        long number = 33;
         return new DataWord(number);
     }
 
@@ -214,6 +214,10 @@ public class ProgramInvokeMockImpl implements ProgramInvoke {
 
     public void setOwnerAddress(byte[] ownerAddress) {
         this.ownerAddress = ownerAddress;
+    }
+
+    public void setNumber(long number) {
+        this.number = number;
     }
 
     @Override

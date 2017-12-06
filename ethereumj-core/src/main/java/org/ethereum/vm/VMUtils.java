@@ -54,7 +54,7 @@ public final class VMUtils {
 
         if (config.vmTrace() && !isEmpty(config.vmTraceDir())) {
 
-            File file = new File(new File(config.databaseDir(), config.vmTraceDir()), txHash + ".json");
+            File file = constructTraceFilePath(config, txHash);
 
             if (file.exists()) {
                 if (file.isFile() && file.canWrite()) {
@@ -72,6 +72,10 @@ public final class VMUtils {
         }
 
         return result;
+    }
+
+    static File constructTraceFilePath(SystemProperties config, String txHash) {
+        return new File(new File(config.databaseDir(), config.vmTraceDir()), txHash + ".json");
     }
 
     private static void writeStringToFile(File file, String data) {

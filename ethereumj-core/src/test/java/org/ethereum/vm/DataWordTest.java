@@ -17,14 +17,14 @@
  */
 package org.ethereum.vm;
 
+import org.apache.commons.lang3.StringUtils;
 import org.junit.Test;
-
 import org.spongycastle.util.encoders.Hex;
 
 import java.math.BigInteger;
+import java.nio.ByteBuffer;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.*;
 
 public class DataWordTest {
 
@@ -32,6 +32,7 @@ public class DataWordTest {
     public void testAddPerformance() {
         boolean enabled = false;
 
+        //noinspection ConstantConditions
         if (enabled) {
             byte[] one = new byte[]{0x01, 0x31, 0x54, 0x41, 0x01, 0x31, 0x54,
                     0x41, 0x01, 0x31, 0x54, 0x41, 0x01, 0x31, 0x54, 0x41, 0x01,
@@ -108,6 +109,13 @@ public class DataWordTest {
         y.mod(x);
         assertEquals(32, y.getData().length);
         assertEquals(expected, Hex.toHexString(y.getData()));
+    }
+
+    @Test
+    public void testMod_zero() {
+        DataWord x = intWord(102);
+        x.mod(intWord(0));
+        assertEquals(0, x.intValue());
     }
 
     @Test
@@ -188,18 +196,6 @@ public class DataWordTest {
 
         assertEquals(32, x.getData().length);
         assertEquals("ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffec", x.toString());
-    }
-
-    @Test
-    public void testPow() {
-
-        BigInteger x = BigInteger.valueOf(Integer.MAX_VALUE);
-        BigInteger y = BigInteger.valueOf(1000);
-
-        BigInteger result1 = x.modPow(x, y);
-        BigInteger result2 = pow(x, y);
-        System.out.println(result1);
-        System.out.println(result2);
     }
 
     @Test
@@ -325,7 +321,8 @@ public class DataWordTest {
                 "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
     }
 
-    void testAddMod(String v1, String v2, String v3) {
+    @SuppressWarnings("SameParameterValue")
+    private void testAddMod(String v1, String v2, String v3) {
         DataWord dv1 = new DataWord(Hex.decode(v1));
         DataWord dv2 = new DataWord(Hex.decode(v2));
         DataWord dv3 = new DataWord(Hex.decode(v3));
@@ -410,24 +407,79 @@ public class DataWordTest {
         assertTrue(wr.isZero());
     }
 
-    public static BigInteger pow(BigInteger x, BigInteger y) {
-        if (y.compareTo(BigInteger.ZERO) < 0)
-            throw new IllegalArgumentException();
-        BigInteger z = x; // z will successively become x^2, x^4, x^8, x^16,
-        // x^32...
-        BigInteger result = BigInteger.ONE;
-        byte[] bytes = y.toByteArray();
-        for (int i = bytes.length - 1; i >= 0; i--) {
-            byte bits = bytes[i];
-            for (int j = 0; j < 8; j++) {
-                if ((bits & 1) != 0)
-                    result = result.multiply(z);
-                // short cut out if there are no more bits to handle:
-                if ((bits >>= 1) == 0 && i == 0)
-                    return result;
-                z = z.multiply(z);
-            }
-        }
-        return result;
+    @Test(expected = RuntimeException.class)
+    public void testDataWordExceeds32Bytes() {
+        new DataWord(Hex.decode(StringUtils.repeat('f', 66)));
+    }
+
+    @Test
+    public void testDataWordNullInput() {
+        DataWord dataWord = new DataWord((byte[])null);
+        assertEquals(0, dataWord.getData().length);
+    }
+
+    @Test
+    public void testIsNegative() {
+        // negative300 is -300 as 256-bit signed integer:
+        byte[] negative300 = Hex.decode("fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffed4");
+        DataWord negative = new DataWord(negative300);
+        assertTrue(negative.isNegative());
+    }
+
+    @Test
+    public void testBigInteger() {
+        // one is -1179773829420 as 256-bit signed integer:
+        byte[] one = Hex.decode("fffffffffffffffffffffffffffffffffffffffffffffffffffffeed4ffffed4");
+        DataWord bigInteger = new DataWord(one);
+        assertEquals("-1179773829420", bigInteger.bigIntValue());
+    }
+
+    @Test
+    public void testNegate() {
+        // one is -1179773829420 as 256-bit signed integer:
+        byte[] one = Hex.decode("fffffffffffffffffffffffffffffffffffffffffffffffffffffeed4ffffed4");
+        DataWord bigInteger = new DataWord(one);
+
+        bigInteger.negate();
+        assertEquals("1179773829420", bigInteger.bigIntValue());
+    }
+
+    @Test
+    public void testToPrefixString() {
+        DataWord bigInteger = new DataWord(Hex.decode("1234567890ffff"));
+        assertEquals("123456", bigInteger.toPrefixString());
+
+        DataWord smallInteger = new DataWord(Hex.decode("1234"));
+        assertEquals("1234", smallInteger.toPrefixString());
+    }
+
+    @Test
+    public void testShortHex() {
+        DataWord bigInteger = new DataWord(Hex.decode("1234567890ffff"));
+        assertEquals("0x1234567890FFFF", bigInteger.shortHex());
+    }
+
+    @Test
+    public void testIsHex() {
+        DataWord number = new DataWord(Hex.decode("1234567890ffff"));
+        assertFalse(number.isHex("1234567890ffff"));
+        assertTrue(number.isHex("000000000000000000000000000000000000000000000000001234567890ffff"));
+    }
+
+    @Test
+    public void testExp() {
+        DataWord number = intWord(300);
+        number.exp(intWord(2));
+
+        assertEquals((int)Math.pow(300, 2), number.intValue());
+    }
+
+    private static DataWord intWord(int number) {
+        return new DataWord(toHexBytes(number));
+    }
+
+    private static byte[] toHexBytes(int number) {
+        // https://stackoverflow.com/questions/2183240/java-integer-to-byte-array
+        return ByteBuffer.allocate(Integer.BYTES).putInt(number).array();
     }
 }
